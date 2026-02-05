@@ -37,63 +37,14 @@ making annotations easy to create, edit, and maintain.
 | Inline | \[Elon Musk\]\[Person\] is a member of the \[PayPal Mafia\]\[Organization\]. |
 | JSON | {“denotations”:\[{“span”:{“begin”: 0, “end”: 9}, “obj”:”Person”},    {“span”:{“begin”: 29, “end”: 41}, “obj”:”Organization”}\]} |
 
+## Tools
+
+Because the syntax is lightweight and follows standard conventions, you can create and manage annotations in any basic text editor (like Notepad or TextEdit) or advanced Markdown editors (like Obsidian or VS Code) without specialized plugins.
+
+For more rigorous annotation tasks, the format can be read in with [TextAE](https://textae.pubannotation.org), allowing users to visualize and edit inline tags through a robust, web-based graphical interface.
+
 
 ## Conversion
 
-[TextAE](https://textae.pubannotation.org) supports the simple inline annotation format.
-
-[PubAnnotation](https://pubannotation.org) provides APIs for conversion between the inline and JSON formats.
-
-### Endpoint: POST /conversions/inline2json
-
-Request:
-
-- Content-Type header: Must be text/plain (required)
-- Body: The inline annotated text (plain text in the request body)
- - Format: [text][label] inline annotation syntax
- - Example: [Elon Musk][Person] is a member of the [PayPal Mafia][Organization].
- - Max size: 10 MB
-
-Response:
-
-- Returns JSON representation of the parsed annotations (using SimpleInlineTextAnnotation.parse)
-
-Example usage:
-
-{% highlight bash %}
-curl -X POST https://pubannotation.org/conversions/inline2json \
- -H "Content-Type: text/plain" \
- -d "[Elon Musk][Person] is a member of the [PayPal Mafia][Organization]."
-{% endhighlight %}
-
-Error codes:
-
-- 415 - Missing or invalid Content-Type (must be text/plain)
-- 413 - Payload too large (exceeds 10 MB)
-- 500 - Parse error
-
-### Endpoint: POST /conversions/json2inline
-
-Request:
-
-- Content-Type header: Must be application/json (required)
-- Body: JSON representation of annotations (PubAnnotation JSON format)
-
-Response:
-
-- Returns plain text with inline annotations (using SimpleInlineTextAnnotation.generate)
-- Format: [text][label] inline annotation syntax
-
-Example usage:
-
-{% highlight bash %}
-curl -X POST https://pubannotation.org/conversions/json2inline \
-  -H "Content-Type: application/json" \
-  -d '{"text":"Elon Musk is a member of the PayPal Mafia.","denotations":[{"span":{"begin":0,"end":9},"obj":"Person"},{"span":{"begin":29,"end":41},"obj":"Organization"}]}'
-{% endhighlight %}
-
-Error codes:
-
-- 415 - Missing or invalid Content-Type (must be application/json)
-- 400 - Invalid JSON or generation error
-- 500 - Internal server error
+- [PubAnnotation](https://pubannotation.org) provides APIs for conversion between the inline and JSON formats (https://www.pubannotation.org/docs/simple-inline-annotation-format).
+- [Ruby gem](https://rubygems.org/gems/simple_inline_text_annotation)
