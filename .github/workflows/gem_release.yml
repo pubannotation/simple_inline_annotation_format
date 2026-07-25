@@ -1,6 +1,13 @@
 name: Release Gem
 
 on:
+  # Auto-publish when a version tag lands (e.g. `git push origin v2.2.1`).
+  push:
+    tags:
+      - v*
+  # Manual trigger — useful for republishing after a transient upload
+  # failure, or for the first release after trusted publishing is set up
+  # (the tag may have been pushed before this workflow existed).
   workflow_dispatch:
 
 jobs:
@@ -13,21 +20,31 @@ jobs:
     name: Release to RubyGems
     needs: run-tests
     runs-on: ubuntu-latest
+    permissions:
+      # Required for OIDC trusted publishing to RubyGems — the action
+      # requests a short-lived token that RubyGems verifies came from THIS
+      # workflow in THIS repo, replacing the long-lived RUBYGEMS_API_KEY
+      # secret we used previously.
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Publish the gem to RubyGems
-      # Reference: https://docs.github.com/ja/actions/use-cases-and-examples/building-and-testing/building-and-testing-ruby#publishing-gems
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          working-directory: ruby
+          ruby-version: '3.4.4'
+          bundler-cache: true
 
-      - name: Publish to RubyGems
-        env:
-          RUBYGEMS_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
-        run: |
-          cd ruby
-          mkdir -p .gem
-          printf -- "---\n:rubygems_api_key: ${RUBYGEMS_API_KEY}\n" > .gem/credentials
-          chmod 0600 .gem/credentials
-          gem build simple_inline_text_annotation.gemspec
-          gem push simple_inline_text_annotation-*.gem --config-file .gem/credentials
+      # Publishes via OIDC — no RUBYGEMS_API_KEY secret needed. Requires a
+      # matching Trusted Publisher configured on rubygems.org for this gem,
+      # pointed at repo `pubannotation/simple_inline_annotation_format`,
+      # workflow `.github/workflows/gem_release.yml`.
+      # Docs: https://guides.rubygems.org/trusted-publishing/
+      - name: Release Gem
+        uses: rubygems/release-gem@v1
+        with:
+          working-directory: ruby
