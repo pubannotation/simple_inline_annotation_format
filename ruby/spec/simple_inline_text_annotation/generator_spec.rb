@@ -187,6 +187,10 @@ RSpec.describe SimpleInlineTextAnnotation::Generator, type: :model do
     end
 
     context "when source has same span denotations" do
+      # Prior to v2.2, only the first denotation on a shared span was kept.
+      # v2.2 introduces the multi-label extension: same-span denotations are
+      # pipe-joined into one annotation. See the dedicated multi-label context
+      # below for URL-resolution + dedupe interactions.
       let(:source) do
         {
           "text" => "Elon Musk is a member of the PayPal Mafia.",
@@ -196,9 +200,9 @@ RSpec.describe SimpleInlineTextAnnotation::Generator, type: :model do
           ]
         }
       end
-      let(:expected_format) { "[Elon Musk][Person] is a member of the PayPal Mafia." }
+      let(:expected_format) { "[Elon Musk][Person|Organization] is a member of the PayPal Mafia." }
 
-      it "should use first denotation" do
+      it "pipe-joins labels on the shared span" do
         is_expected.to eq(expected_format)
       end
     end
@@ -451,6 +455,135 @@ RSpec.describe SimpleInlineTextAnnotation::Generator, type: :model do
 
       it "raises GeneratorError" do
         expect { subject }.to raise_error(SimpleInlineTextAnnotation::GeneratorError, 'The "text" key is missing.')
+      end
+    end
+
+    # ------------------------------------------------------------------
+    # Extension (v2.2): multiple labels on the same span → pipe-joined.
+    # ------------------------------------------------------------------
+    context "when multiple denotations share the same span (multi-label)" do
+      let(:source) do
+        {
+          "text" => "eye",
+          "denotations" => [
+            { "span" => { "begin" => 0, "end" => 3 }, "obj" => "UBERON_0000019" },
+            { "span" => { "begin" => 0, "end" => 3 }, "obj" => "UBERON_0000955" }
+          ]
+        }
+      end
+
+      it "pipe-joins the labels into a single annotation preserving insertion order" do
+        is_expected.to eq("[eye][UBERON_0000019|UBERON_0000955]")
+      end
+    end
+
+    context "when multiple denotations share the same span AND identify by URL with entity_types" do
+      # Combines pipe-join with URL resolution: each obj resolves to its
+      # short label, joined labels appear inline, and the reference block
+      # lists every URL individually.
+      let(:source) do
+        {
+          "text" => "eye",
+          "denotations" => [
+            { "span" => { "begin" => 0, "end" => 3 }, "obj" => "http://x/UBERON_0000019" },
+            { "span" => { "begin" => 0, "end" => 3 }, "obj" => "http://x/UBERON_0000955" }
+          ],
+          "config" => {
+            "entity types" => [
+              { "id" => "http://x/UBERON_0000019", "label" => "UBERON_0000019" },
+              { "id" => "http://x/UBERON_0000955", "label" => "UBERON_0000955" }
+            ]
+          }
+        }
+      end
+
+      it "resolves each URL to its label independently, then pipe-joins" do
+        expected = <<~SIAF.chomp
+          [eye][UBERON_0000019|UBERON_0000955]
+
+          [UBERON_0000019]: http://x/UBERON_0000019
+          [UBERON_0000955]: http://x/UBERON_0000955
+        SIAF
+        is_expected.to eq(expected)
+      end
+    end
+
+    context "when two same-span denotations point at the SAME obj (pathological)" do
+      # Deduplicate within the pipe list — collapse identical entries so
+      # we don't emit `[eye][A|A]`.
+      let(:source) do
+        {
+          "text" => "eye",
+          "denotations" => [
+            { "span" => { "begin" => 0, "end" => 3 }, "obj" => "A" },
+            { "span" => { "begin" => 0, "end" => 3 }, "obj" => "A" }
+          ]
+        }
+      end
+
+      it "deduplicates identical labels within a single annotation" do
+        is_expected.to eq("[eye][A]")
+      end
+    end
+
+    context "when three or more denotations share the same span" do
+      # 2-label ordering is trivially symmetric; 3+ catches a subtle regression
+      # where a stray `.sort` would put labels in alphabetic order instead of
+      # insertion order.
+      let(:source) do
+        {
+          "text" => "T-cell",
+          "denotations" => [
+            { "span" => { "begin" => 0, "end" => 6 }, "obj" => "Beta" },
+            { "span" => { "begin" => 0, "end" => 6 }, "obj" => "Alpha" },
+            { "span" => { "begin" => 0, "end" => 6 }, "obj" => "Gamma" }
+          ]
+        }
+      end
+
+      it "preserves insertion order in the pipe list (not alphabetic)" do
+        is_expected.to eq("[T-cell][Beta|Alpha|Gamma]")
+      end
+    end
+
+    context "when a multi-label span AND a strictly-nested inner span coexist" do
+      # Composed behavior: same-span duplicates merge (pipe-joined), while a
+      # separate span strictly nested inside them is dropped. Guards against
+      # accidental interaction between `remove_duplicates_from`,
+      # `remove_nests_from`, and Generator's grouping.
+      let(:source) do
+        {
+          "text" => "optic nerve xyz",
+          "denotations" => [
+            { "span" => { "begin" => 0, "end" => 11 }, "obj" => "A" },
+            { "span" => { "begin" => 0, "end" => 11 }, "obj" => "B" },
+            { "span" => { "begin" => 6, "end" => 11 }, "obj" => "INNER" }
+          ]
+        }
+      end
+
+      it "pipe-joins the outer multi-label span and drops the strictly-nested inner" do
+        is_expected.to eq("[optic nerve][A|B] xyz")
+      end
+    end
+
+    context "when a smaller span is strictly nested inside a same-begin larger span" do
+      # 'optic nerve' [0-11] contains 'optic' [0-5] with a shared begin_pos.
+      # Historically the validator dropped both (nested_within? was inclusive);
+      # the fix distinguishes STRICT nesting from an identical span, so the
+      # outer is kept and the strictly-nested inner is dropped.
+      let(:source) do
+        {
+          "text" => "optic nerve xyz",
+          "denotations" => [
+            { "span" => { "begin" => 0, "end" => 11 }, "obj" => "OUTER" },
+            { "span" => { "begin" => 0, "end" => 5 },  "obj" => "INNER" }
+          ]
+        }
+      end
+
+      it "keeps the outer span and drops the strictly-nested inner" do
+        is_expected.to eq("[optic nerve][OUTER] xyz")
       end
     end
   end

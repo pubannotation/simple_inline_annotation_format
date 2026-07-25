@@ -34,24 +34,39 @@ class SimpleInlineTextAnnotation
     end
 
     def annotate_text(text, denotations, relations)
+      # Group denotations by span position so multiple denotations on the
+      # SAME span emit ONE annotation with a pipe-joined label
+      # (e.g. `[eye][UBERON_0000019|UBERON_0000955]`) — the SIAF spec's
+      # extension for multi-labelled spans. Individual URL resolution via
+      # `entity types` config still applies to each label independently, so
+      # the tail reference block lists every underlying URL.
+      grouped = denotations.group_by { |d| [ d.begin_pos, d.end_pos ] }
+
       # Annotate text from the end to ensure position calculation.
-      denotations.sort_by(&:begin_pos).reverse_each do |denotation|
-        text = annotate_text_with_denotation(text, denotation, relations)
+      grouped.sort_by { |(b, _e), _| b }.reverse_each do |(_b, _e), ds|
+        text = annotate_text_with_denotations(text, ds, relations)
       end
 
       text
     end
 
-    def annotate_text_with_denotation(text, denotation, relations)
-      begin_pos = denotation.begin_pos
-      end_pos = denotation.end_pos
-      annotation = if denotation.id && !denotation.id.empty?
-                     get_annotations(denotation, relations)
-                   else
-                     get_obj(denotation.obj)
-                   end
+    def annotate_text_with_denotations(text, denotations, relations)
+      begin_pos = denotations.first.begin_pos
+      end_pos   = denotations.first.end_pos
 
-      annotated_text = "[#{text[begin_pos...end_pos]}][#{annotation}]"
+      # Compose each denotation's label independently (honors get_obj URL →
+      # short-label lookup and per-denotation relation composition), then
+      # pipe-join with dedupe to preserve insertion order.
+      labels = denotations.map do |d|
+        if d.id && !d.id.empty?
+          get_annotations(d, relations)
+        else
+          get_obj(d.obj)
+        end
+      end
+      composite = labels.uniq.join("|")
+
+      annotated_text = "[#{text[begin_pos...end_pos]}][#{composite}]"
       text[0...begin_pos] + annotated_text + text[end_pos..]
     end
 

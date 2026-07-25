@@ -15,7 +15,11 @@ class SimpleInlineTextAnnotation
     private
 
     def remove_duplicates_from(denotations)
-      denotations.uniq(&:span)
+      # Deduplicate on the FULL identity (span + obj + id), not just span —
+      # two denotations sharing a span but pointing at different objs are the
+      # multi-label case (e.g. `[eye][UBERON_0000019|UBERON_0000955]`) and
+      # Generator pipe-joins them. Only truly identical entries are dropped.
+      denotations.uniq { |d| [ d.span, d.obj, d.id ] }
     end
 
     def remove_non_integer_positions_from(denotations)
@@ -40,10 +44,17 @@ class SimpleInlineTextAnnotation
       result = []
 
       sorted_denotations.each do |denotation|
-        result << denotation unless result.any? { |outer| denotation.nested_within?(outer) }
+        # Preserve denotations that share an EXACT span with an already-accepted
+        # one (the multi-label case — Generator will pipe-join their labels).
+        # Only drop those STRICTLY nested inside a larger outer span.
+        result << denotation unless result.any? { |outer| strictly_nested?(denotation, outer) }
       end
 
       result
+    end
+
+    def strictly_nested?(inner, outer)
+      inner.nested_within?(outer) && (inner.begin_pos != outer.begin_pos || inner.end_pos != outer.end_pos)
     end
 
     def remove_boundary_crosses_from(denotations)
