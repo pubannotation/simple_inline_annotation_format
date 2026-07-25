@@ -29,6 +29,29 @@ making annotations easy to create, edit, and maintain.
 
    * Example: \\\[This is a part of\]\[original text\]
 
+3. URL Resolution (Reference-Style Labels)
+
+   * A label may resolve to a full URL through a Markdown-style reference block appended after a blank line.
+
+   * The reference block associates each label with a URL using the syntax `[Label]: URL`, mirroring Markdown's reference-style links.
+
+   * Example:
+
+     ```
+     [Elon Musk][Person] is a member of the [PayPal Mafia][Organization].
+
+     [Person]: https://example.com/Person
+     [Organization]: https://example.com/Organization
+     ```
+
+4. Multiple Labels on the Same Span
+
+   * A single span may carry multiple labels by pipe-separating them inside the second bracket pair.
+
+   * Example: \[eye\]\[UBERON_0000019\|UBERON_0000955\]
+
+   * Each label resolves independently against the reference block, so all underlying URLs remain retrievable.
+
 
 ## Example
 
