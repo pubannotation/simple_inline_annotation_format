@@ -40,7 +40,7 @@ class SimpleInlineTextAnnotation
       # extension for multi-labelled spans. Individual URL resolution via
       # `entity types` config still applies to each label independently, so
       # the tail reference block lists every underlying URL.
-      grouped = denotations.group_by { |d| [ d.begin_pos, d.end_pos ] }
+      grouped = denotations.group_by { |d| [d.begin_pos, d.end_pos] }
 
       # Annotate text from the end to ensure position calculation.
       grouped.sort_by { |(b, _e), _| b }.reverse_each do |(_b, _e), ds|
@@ -53,21 +53,25 @@ class SimpleInlineTextAnnotation
     def annotate_text_with_denotations(text, denotations, relations)
       begin_pos = denotations.first.begin_pos
       end_pos   = denotations.first.end_pos
-
-      # Compose each denotation's label independently (honors get_obj URL →
-      # short-label lookup and per-denotation relation composition), then
-      # pipe-join with dedupe to preserve insertion order.
-      labels = denotations.map do |d|
-        if d.id && !d.id.empty?
-          get_annotations(d, relations)
-        else
-          get_obj(d.obj)
-        end
-      end
-      composite = labels.uniq.join("|")
+      composite = compose_label(denotations, relations)
 
       annotated_text = "[#{text[begin_pos...end_pos]}][#{composite}]"
       text[0...begin_pos] + annotated_text + text[end_pos..]
+    end
+
+    # Compose each denotation's label independently (honors get_obj URL →
+    # short-label lookup and per-denotation relation composition), then
+    # pipe-join with dedupe to preserve insertion order.
+    def compose_label(denotations, relations)
+      denotations.map { |d| label_for(d, relations) }.uniq.join("|")
+    end
+
+    def label_for(denotation, relations)
+      if denotation.id && !denotation.id.empty?
+        get_annotations(denotation, relations)
+      else
+        get_obj(denotation.obj)
+      end
     end
 
     def labeled_entity_types

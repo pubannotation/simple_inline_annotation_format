@@ -19,7 +19,7 @@ class SimpleInlineTextAnnotation
       # two denotations sharing a span but pointing at different objs are the
       # multi-label case (e.g. `[eye][UBERON_0000019|UBERON_0000955]`) and
       # Generator pipe-joins them. Only truly identical entries are dropped.
-      denotations.uniq { |d| [ d.span, d.obj, d.id ] }
+      denotations.uniq { |d| [d.span, d.obj, d.id] }
     end
 
     def remove_non_integer_positions_from(denotations)
